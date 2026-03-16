@@ -417,7 +417,7 @@ export default function App() {
           enableSearch={false}
           countryCodeEditable={false}
         />
-        {showPlaceholderOverlay && (
+        {measureDebug.measured && showPlaceholderOverlay && (
           <div className="phone-widget-placeholder-overlay">
             <span
               className="phone-widget-placeholder-text"

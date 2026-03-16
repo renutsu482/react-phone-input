@@ -84,7 +84,7 @@ body {
   height: 100%;
   display: flex;
   align-items: center;
-  pointer-events: none;
+  pointer-events: none !important;
   color: #999;
   font-size: 14px;
   z-index: 5; /* below country dropdown, above input */
@@ -147,4 +147,9 @@ body {
 
 .phone-widget-sublabel-right .phone-widget-sublabel {
   margin-left: 6px;
+}
+
+/* Hide subLabel visually while the country dropdown is open */
+.phone-widget-root:has(.flag-dropdown.open) .phone-widget-sublabel {
+  visibility: hidden !important;
 }
