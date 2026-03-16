@@ -7,22 +7,62 @@ const MESSAGE_TYPE = 'react-phone-input-value'
 const FALLBACK_COUNTRY = 'us'
 
 /**
- * Get default country from config only (not displayed in UI).
- * Sources: (1) Jotform widget iframe URL query ?defaultCountry=xx,
- *          (2) fallback "us" if missing or invalid.
- * ISO2 codes e.g. tr, gb, us. Used only to set initial country on PhoneInput.
+ * Normalize a raw country code string to a lowercase ISO2 code (tr, gb, us, de, ...).
+ * Returns null if the value is empty or not a string.
  */
-function getDefaultCountryFromConfig() {
+function normalizeCountryCode(raw) {
+  if (!raw || typeof raw !== 'string') return null
+  const code = raw.trim().toLowerCase()
+  return code.length ? code : null
+}
+
+/**
+ * Read defaultCountry from Jotform widget settings, if available.
+ * Uses JFCustomWidget.getWidgetSetting('defaultCountry') when present.
+ */
+function readDefaultCountryFromJotform() {
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.JFCustomWidget !== 'undefined' &&
+      typeof window.JFCustomWidget.getWidgetSetting === 'function'
+    ) {
+      const raw = window.JFCustomWidget.getWidgetSetting('defaultCountry')
+      return normalizeCountryCode(raw)
+    }
+  } catch {
+    // ignore and fall through
+  }
+  return null
+}
+
+/**
+ * Read defaultCountry from URL query param ?defaultCountry=xx.
+ */
+function readDefaultCountryFromQuery() {
   try {
     const params = new URLSearchParams(window.location.search)
     const raw = params.get('defaultCountry')
-    if (!raw || typeof raw !== 'string') return FALLBACK_COUNTRY
-    const code = raw.trim().toLowerCase()
-    if (!code.length) return FALLBACK_COUNTRY
-    return code
+    return normalizeCountryCode(raw)
   } catch {
-    return FALLBACK_COUNTRY
+    return null
   }
+}
+
+/**
+ * Resolve default country using both Jotform settings and URL query param.
+ * Priority:
+ * 1. Jotform widget setting defaultCountry
+ * 2. URL query param defaultCountry
+ * 3. Fallback "us"
+ *
+ * Returns all three values for debug purposes.
+ */
+function resolveDefaultCountryWithDebug() {
+  const fromJotform = readDefaultCountryFromJotform()
+  const fromQuery = readDefaultCountryFromQuery()
+  const resolved = fromJotform || fromQuery || FALLBACK_COUNTRY
+  return { fromJotform, fromQuery, resolved }
 }
 
 /**
@@ -51,8 +91,12 @@ function trimToMaxDigits(value, maxDigits) {
 }
 
 export default function App() {
-  /* defaultCountry: internal config only, never rendered as an input or UI control */
-  const [initialCountry] = useState(() => getDefaultCountryFromConfig())
+  // defaultCountry: internal config only, never rendered as an input or UI control
+  const [{ fromJotform, fromQuery, resolved }] = useState(
+    () => resolveDefaultCountryWithDebug(),
+  )
+  const [country, setCountry] = useState(resolved)
+
   const [value, setValue] = useState('')
   const valueRef = useRef(value)
   valueRef.current = value
@@ -60,9 +104,17 @@ export default function App() {
   useEffect(() => {
     if (typeof window.JFCustomWidget === 'undefined') return
 
-    window.JFCustomWidget.subscribe('ready', function (_formId, initialValue) {
-      if (initialValue) setValue(initialValue)
-    })
+    window.JFCustomWidget.subscribe(
+      'ready',
+      function (_formId, initialValue, _data) {
+        // Re-resolve country using Jotform settings once the widget is ready,
+        // in case settings are not available at initial render time.
+        const { resolved: nextResolved } = resolveDefaultCountryWithDebug()
+        setCountry(nextResolved)
+
+        if (initialValue) setValue(initialValue)
+      },
+    )
 
     window.JFCustomWidget.subscribe('submit', function () {
       window.JFCustomWidget.sendSubmit({
@@ -90,7 +142,7 @@ export default function App() {
   return (
     <div className="phone-widget-root">
       <PhoneInput
-        country={initialCountry}
+        country={country}
         value={value}
         onChange={handleChange}
         placeholder="Enter phone number"
