@@ -26,69 +26,33 @@ function normalizePlaceholder(raw) {
   return text.length ? text : null
 }
 
-/**
- * Read defaultCountry from Jotform widget settings, if available.
- * Uses JFCustomWidget.getWidgetSetting('defaultCountry') when present.
- */
-function readDefaultCountryFromJotform() {
+function getJotformEnvAndSetting(name) {
+  const hasWindow = typeof window !== 'undefined'
+  const jf = hasWindow ? window.JFCustomWidget : undefined
+  const hasJF = !!jf
+  const hasGetSetting =
+    !!jf && typeof jf.getWidgetSetting === 'function'
+  let raw
   try {
-    if (
-      typeof window !== 'undefined' &&
-      typeof window.JFCustomWidget !== 'undefined' &&
-      typeof window.JFCustomWidget.getWidgetSetting === 'function'
-    ) {
-      const raw = window.JFCustomWidget.getWidgetSetting('defaultCountry')
-      return normalizeCountryCode(raw)
+    if (hasGetSetting) {
+      raw = jf.getWidgetSetting(name)
     }
   } catch {
     // ignore and fall through
   }
-  return null
+  return { hasJF, hasGetSetting, raw }
 }
 
-/**
- * Read defaultCountry from URL query param ?defaultCountry=xx.
- */
-function readDefaultCountryFromQuery() {
+function getJotformSetting(name) {
+  return getJotformEnvAndSetting(name).raw
+}
+
+function getQueryParam(name) {
   try {
     const params = new URLSearchParams(window.location.search)
-    const raw = params.get('defaultCountry')
-    return normalizeCountryCode(raw)
+    return params.get(name) ?? undefined
   } catch {
-    return null
-  }
-}
-
-/**
- * Read placeholder from Jotform widget settings, if available.
- * Uses JFCustomWidget.getWidgetSetting('placeholder') when present.
- */
-function readPlaceholderFromJotform() {
-  try {
-    if (
-      typeof window !== 'undefined' &&
-      typeof window.JFCustomWidget !== 'undefined' &&
-      typeof window.JFCustomWidget.getWidgetSetting === 'function'
-    ) {
-      const raw = window.JFCustomWidget.getWidgetSetting('placeholder')
-      return normalizePlaceholder(raw)
-    }
-  } catch {
-    // ignore and fall through
-  }
-  return null
-}
-
-/**
- * Read placeholder from URL query param ?placeholder=...
- */
-function readPlaceholderFromQuery() {
-  try {
-    const params = new URLSearchParams(window.location.search)
-    const raw = params.get('placeholder')
-    return normalizePlaceholder(raw)
-  } catch {
-    return null
+    return undefined
   }
 }
 
@@ -101,21 +65,72 @@ function readPlaceholderFromQuery() {
  *  3. Fallback "us"
  *
  * Placeholder priority:
- *  1. Jotform widget setting placeholder
- *  2. URL query param placeholder
- *  3. Fallback "Enter phone number"
+ *  1. Jotform widget setting placeholderText
+ *  2. Jotform widget setting phonePlaceholder
+ *  3. Jotform widget setting placeholder
+ *  4. URL query param placeholderText
+ *  5. URL query param phonePlaceholder
+ *  6. URL query param placeholder
+ *  7. Fallback "Enter phone number"
  */
 function resolveConfig() {
-  const countryFromJotform = readDefaultCountryFromJotform()
-  const countryFromQuery = readDefaultCountryFromQuery()
-  const placeholderFromJotform = readPlaceholderFromJotform()
-  const placeholderFromQuery = readPlaceholderFromQuery()
+  const envDefaultCountry = getJotformEnvAndSetting('defaultCountry')
+  // Country
+  const jotformDefaultCountry = normalizeCountryCode(
+    envDefaultCountry.raw,
+  )
+  const queryDefaultCountry = normalizeCountryCode(
+    getQueryParam('defaultCountry'),
+  )
+  const country = jotformDefaultCountry || queryDefaultCountry || FALLBACK_COUNTRY
 
-  const country = countryFromJotform || countryFromQuery || FALLBACK_COUNTRY
+  // Placeholder – Jotform first (placeholderText > phonePlaceholder > placeholder)
+  const envPlaceholderText = getJotformEnvAndSetting('placeholderText')
+  const envPhonePlaceholder = getJotformEnvAndSetting('phonePlaceholder')
+  const envPlaceholder = getJotformEnvAndSetting('placeholder')
+
+  const jtPlaceholderText = normalizePlaceholder(envPlaceholderText.raw)
+  const jtPhonePlaceholder = normalizePlaceholder(envPhonePlaceholder.raw)
+  const jtPlaceholder = normalizePlaceholder(envPlaceholder.raw)
+
+  // Then query params (placeholderText > phonePlaceholder > placeholder)
+  const qpPlaceholderText = normalizePlaceholder(
+    getQueryParam('placeholderText'),
+  )
+  const qpPhonePlaceholder = normalizePlaceholder(
+    getQueryParam('phonePlaceholder'),
+  )
+  const qpPlaceholder = normalizePlaceholder(getQueryParam('placeholder'))
+
   const placeholder =
-    placeholderFromJotform || placeholderFromQuery || FALLBACK_PLACEHOLDER
+    jtPlaceholderText ||
+    jtPhonePlaceholder ||
+    jtPlaceholder ||
+    qpPlaceholderText ||
+    qpPhonePlaceholder ||
+    qpPlaceholder ||
+    FALLBACK_PLACEHOLDER
 
-  return { country, placeholder }
+  return {
+    country,
+    placeholder,
+    debug: {
+      jf: envDefaultCountry.hasJF || envPlaceholderText.hasJF,
+      getSetting:
+        envDefaultCountry.hasGetSetting || envPlaceholderText.hasGetSetting,
+      rawDefaultCountry: envDefaultCountry.raw,
+      rawPlaceholderText: envPlaceholderText.raw,
+      rawPhonePlaceholder: envPhonePlaceholder.raw,
+      jotformDefaultCountry,
+      queryDefaultCountry,
+      jtPlaceholderText,
+      jtPhonePlaceholder,
+      jtPlaceholder,
+      qpPlaceholderText,
+      qpPhonePlaceholder,
+      qpPlaceholder,
+    },
+  }
 }
 
 /**
@@ -145,15 +160,85 @@ function trimToMaxDigits(value, maxDigits) {
 
 export default function App() {
   // defaultCountry & placeholder: internal config only, never rendered as their own inputs
-  const [{ country: initialCountry, placeholder: initialPlaceholder }] =
-    useState(() => resolveConfig())
+  const [
+    {
+      country: initialCountry,
+      placeholder: initialPlaceholder,
+      debug: initialDebug,
+    },
+  ] = useState(() => resolveConfig())
   const [country, setCountry] = useState(initialCountry)
   const [countryMeta, setCountryMeta] = useState(null)
   const [placeholder, setPlaceholder] = useState(initialPlaceholder)
+  const [debug, setDebug] = useState({
+    ...initialDebug,
+    resolvedPlaceholder: initialPlaceholder,
+    isDropdownOpen: false,
+    lastResizeHeight: null,
+  })
 
   const [value, setValue] = useState('')
   const valueRef = useRef(value)
   valueRef.current = value
+  const containerRef = useRef(null)
+
+  const requestResize = useCallback((height) => {
+    try {
+      if (
+        typeof window !== 'undefined' &&
+        typeof window.JFCustomWidget !== 'undefined' &&
+        typeof window.JFCustomWidget.requestFrameResize === 'function'
+      ) {
+        window.JFCustomWidget.requestFrameResize({ height })
+        setDebug((prev) => ({ ...prev, lastResizeHeight: height }))
+      }
+    } catch {
+      // ignore resize errors
+    }
+  }, [])
+
+  // Observe dropdown open/close by watching for .country-list / .flag-dropdown.open changes
+  useEffect(() => {
+    const root = containerRef.current
+    if (!root) return
+
+    let lastOpen = false
+    const computeIsOpen = () => {
+      const flagOpen = root.querySelector('.flag-dropdown.open')
+      if (flagOpen) return true
+      // Fallback: visible country-list (not display:none and has layout)
+      const list = root.querySelector('.country-list')
+      if (!list) return false
+      const style = window.getComputedStyle(list)
+      const visible =
+        style &&
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        style.opacity !== '0' &&
+        list.offsetParent !== null
+      return visible
+    }
+
+    const handleOpenChange = () => {
+      const isOpen = computeIsOpen()
+      if (isOpen === lastOpen) return
+      lastOpen = isOpen
+      setDebug((prev) => ({ ...prev, isDropdownOpen: isOpen }))
+      requestResize(isOpen ? 320 : 100)
+    }
+
+    const observer = new MutationObserver(handleOpenChange)
+    observer.observe(root, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    })
+
+    // Initial check
+    handleOpenChange()
+
+    return () => observer.disconnect()
+  }, [requestResize])
 
   useEffect(() => {
     if (typeof window.JFCustomWidget === 'undefined') return
@@ -163,10 +248,18 @@ export default function App() {
       function (_formId, initialValue, _data) {
         // Re-resolve config using Jotform settings once the widget is ready,
         // in case settings are not available at initial render time.
-        const { country: nextCountry, placeholder: nextPlaceholder } =
-          resolveConfig()
+        const {
+          country: nextCountry,
+          placeholder: nextPlaceholder,
+          debug: nextDebug,
+        } = resolveConfig()
         setCountry(nextCountry)
         setPlaceholder(nextPlaceholder)
+        setDebug((prev) => ({
+          ...prev,
+          ...nextDebug,
+          resolvedPlaceholder: nextPlaceholder,
+        }))
 
         if (initialValue) setValue(initialValue)
       },
@@ -213,7 +306,7 @@ export default function App() {
 
   return (
     <div className="phone-widget-root">
-      <div className="phone-widget-inner">
+      <div className="phone-widget-inner" ref={containerRef}>
         <PhoneInput
           country={country}
           value={value}
