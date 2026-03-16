@@ -39,7 +39,7 @@ body {
    the dropdown to render below without being clipped. */
 .phone-widget-inner {
   position: relative;
-  width: 330px;
+  width: 335px;
   height: 40px;
 }
 
@@ -48,7 +48,7 @@ body {
    Let react-phone-input-2 control flag-dropdown and country-list.
    ------------------------------------------------------------------------- */
 .phone-widget-root .react-tel-input.phone-widget-container {
-  width: 330px !important;
+  width: 335px !important;
   height: 40px;
   margin: 0;
   padding: 0;
@@ -62,7 +62,7 @@ body {
    ------------------------------------------------------------------------- */
 .phone-widget-root .react-tel-input .form-control.phone-widget-input {
   height: 40px;
-  width: 282px; /* 330 - 48 for flag area */
+  width: 287px; /* 335 - 48 for flag area */
   padding-left: 48px;
   line-height: 38px;
   font-size: 14px;
