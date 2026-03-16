@@ -16,7 +16,7 @@ body {
    Do NOT set overflow here – the country dropdown must be able to open below.
    ------------------------------------------------------------------------- */
 .phone-widget-root {
-  width: 330px;
+  width: 335px;
   min-height: 40px;
   display: flex;
   align-items: flex-start;
@@ -62,7 +62,7 @@ body {
    ------------------------------------------------------------------------- */
 .phone-widget-root .react-tel-input .form-control.phone-widget-input {
   height: 40px;
-  width: 287px; /* 335 - 48 for flag area */
+  width: 335px;
   padding-left: 48px;
   line-height: 38px;
   font-size: 14px;
