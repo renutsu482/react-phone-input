@@ -1,7 +1,9 @@
 /* -------------------------------------------------------------------------
-   Base & reset
+   Base & reset – box-sizing everywhere for predictable layout
    ------------------------------------------------------------------------- */
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -12,11 +14,30 @@ body {
 }
 
 /* -------------------------------------------------------------------------
-   Phone widget: outer wrapper only. Exact size 330x40.
-   Do NOT set overflow here – the country dropdown must be able to open below.
+   Phone widget – iframe-safe layout
+
+   Layout system:
+   - Outer (.phone-widget-root): width 100% so the widget matches other form
+     fields in Jotform; flexbox for sublabel (top/bottom/left/right).
+   - Inner (.phone-widget-inner): width 100%, max-width 335px on desktop so
+     it doesn’t over-stretch on wide screens; fully fluid on small viewports.
+   - Library container (.react-tel-input): width 100%, height 40px; no fixed
+     pixel width so it fills the inner wrapper in any iframe or viewport.
+   - Input: width 100% with padding-left 48px (flag area); box-sizing border-box
+     so the content area is “remaining space” without calc or hacks.
+   - Placeholder overlay: positioned over the input; placeholder text is
+     offset with transform(translateX(48 + measuredDialWidth)) so it aligns
+     after the dial code; no margin/negative-offset tricks.
+   - Dropdown (.country-list): position absolute, so it never affects the
+     container width or causes reflow in the iframe.
+
+   All dimensions are fluid or constrained by max-width; no fragile
+   margin/negative-margin or !important overrides.
    ------------------------------------------------------------------------- */
+
+/* Outer wrapper: full width, flex for sublabel layout. Behaves like a normal form field. */
 .phone-widget-root {
-  width: 335px;
+  width: 100%;
   min-height: 40px;
   display: flex;
   align-items: flex-start;
@@ -32,50 +53,48 @@ body {
 .phone-widget-sublabel-right {
   flex-direction: row;
   align-items: center;
-  flex-wrap: wrap; /* allow sublabel to wrap under input on narrow layouts */
+  flex-wrap: wrap;
 }
 
-/* Inner wrapper to keep the control at 330x40 while allowing
-   the dropdown to render below without being clipped. */
+/* Inner wrapper: 100% width, max 335px on desktop. Contains control + overlay + measure. */
 .phone-widget-inner {
   position: relative;
-  width: 335px;
+  width: 100%;
+  max-width: 335px;
   height: 40px;
+  flex-shrink: 0;
 }
 
-/* -------------------------------------------------------------------------
-   Container: fixed size only. No overflow, no border/background overrides.
-   Let react-phone-input-2 control flag-dropdown and country-list.
-   ------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  .phone-widget-inner {
+    max-width: none;
+  }
+}
+
+/* Library container: fill inner, fixed height. Dropdown is absolute so it does not affect width. */
 .phone-widget-root .react-tel-input.phone-widget-container {
-  width: 335px !important;
+  width: 100%;
   height: 40px;
   margin: 0;
   padding: 0;
   font-size: 14px;
 }
 
-/* -------------------------------------------------------------------------
-   Input only: height and width to fit 330x40. Minimal overrides.
-   Left side is covered by the library’s flag-dropdown (48px); we only size
-   the input and align height. No changes to .flag-dropdown / .selected-flag.
-   ------------------------------------------------------------------------- */
+/* Input: fill container; padding-left reserves space for flag (48px). No fixed width. */
 .phone-widget-root .react-tel-input .form-control.phone-widget-input {
+  width: 100%;
   height: 40px;
-  width: 335px;
   padding-left: 48px;
   line-height: 38px;
   font-size: 14px;
 }
 
-/* Prevent input text from overflowing */
 .phone-widget-root .react-tel-input .form-control {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Overlayed visible placeholder when the value only contains the dial code.
-   Pointer-events: none so it does not block typing. */
+/* Placeholder overlay: full area, pointer-events none so input stays focusable. */
 .phone-widget-placeholder-overlay {
   position: absolute;
   top: 0;
@@ -84,25 +103,13 @@ body {
   height: 100%;
   display: flex;
   align-items: center;
-  pointer-events: none !important;
+  pointer-events: none;
   color: #999;
   font-size: 14px;
-  z-index: 5; /* below country dropdown, above input */
+  z-index: 5;
 }
 
-/* Measurement span for dial code width – same font as input, hidden visually */
-.phone-widget-dial-measure {
-  position: absolute;
-  top: 0;
-  left: 48px; /* after flag area */
-  visibility: hidden;
-  white-space: pre;
-  font-size: 14px;
-  line-height: 38px;
-  font-weight: normal;
-  letter-spacing: 0;
-}
-
+/* Placeholder text: position via transform (from JS) after dial code. No margin hacks. */
 .phone-widget-placeholder-text {
   position: absolute;
   top: 0;
@@ -113,7 +120,20 @@ body {
   white-space: nowrap;
 }
 
-/* Ensure the react-phone-input-2 country list appears above subLabel/placeholder */
+/* Hidden span to measure dial code width in current font/layout (iframe-safe). */
+.phone-widget-dial-measure {
+  position: absolute;
+  top: 0;
+  left: 48px;
+  visibility: hidden;
+  white-space: pre;
+  font-size: 14px;
+  line-height: 38px;
+  font-weight: normal;
+  letter-spacing: 0;
+}
+
+/* Country list: absolute, does not affect container width. Above overlay. */
 .phone-widget-root .react-tel-input .country-list {
   z-index: 20;
   background-color: #fff;
@@ -122,9 +142,6 @@ body {
 .phone-widget-sublabel {
   position: relative;
   z-index: 1;
-}
-
-.phone-widget-sublabel {
   font-size: 11px;
   color: #888;
   line-height: 1.3;
@@ -149,7 +166,6 @@ body {
   margin-left: 6px;
 }
 
-/* Hide subLabel visually while the country dropdown is open */
 .phone-widget-root:has(.flag-dropdown.open) .phone-widget-sublabel {
-  visibility: hidden !important;
+  visibility: hidden;
 }

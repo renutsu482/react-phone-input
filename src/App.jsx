@@ -209,11 +209,8 @@ export default function App() {
   const valueRef = useRef(value)
   valueRef.current = value
   const containerRef = useRef(null)
-  const [measureDebug, setMeasureDebug] = useState({
-    dialWidth: 0,
-    offset: 48,
-    measured: false,
-  })
+  /* Only flag needed for placeholder alignment: show overlay after dial width is measured. */
+  const [dialMeasured, setDialMeasured] = useState(false)
 
   const requestResize = useCallback((height) => {
     try {
@@ -348,12 +345,7 @@ export default function App() {
   useLayoutEffect(() => {
     if (!countryMeta || !countryMeta.dialCode) {
       setDialOffsetPx(0)
-      setMeasureDebug((prev) => ({
-        ...prev,
-        dialWidth: 0,
-        offset: 48,
-        measured: false,
-      }))
+      setDialMeasured(false)
       return
     }
 
@@ -361,12 +353,7 @@ export default function App() {
       if (!dialMeasureRef.current) return 0
       const w = dialMeasureRef.current.offsetWidth || 0
       setDialOffsetPx(w)
-      setMeasureDebug((prev) => ({
-        ...prev,
-        dialWidth: w,
-        offset: 48 + w,
-        measured: true,
-      }))
+      setDialMeasured(true)
       return w
     }
 
@@ -417,11 +404,16 @@ export default function App() {
           enableSearch={false}
           countryCodeEditable={false}
         />
-        {measureDebug.measured && showPlaceholderOverlay && (
+        {showPlaceholderOverlay &&
+          (!(countryMeta && countryMeta.dialCode) || dialMeasured) && (
           <div className="phone-widget-placeholder-overlay">
             <span
               className="phone-widget-placeholder-text"
-              style={{ transform: `translateX(${48 + dialOffsetPx}px)` }}
+              style={{
+                transform: `translateX(${
+                  48 + (countryMeta && countryMeta.dialCode ? dialOffsetPx : 0)
+                }px)`,
+              }}
             >
               {placeholder}
             </span>
