@@ -76,13 +76,12 @@ function getQueryParam(name) {
 function resolveConfig() {
   const envDefaultCountry = getJotformEnvAndSetting('defaultCountry')
   // Country
-  const jotformDefaultCountry = normalizeCountryCode(
-    envDefaultCountry.raw,
-  )
+  const jotformDefaultCountry = normalizeCountryCode(envDefaultCountry.raw)
   const queryDefaultCountry = normalizeCountryCode(
     getQueryParam('defaultCountry'),
   )
-  const country = jotformDefaultCountry || queryDefaultCountry || FALLBACK_COUNTRY
+  const country =
+    jotformDefaultCountry || queryDefaultCountry || FALLBACK_COUNTRY
 
   // Placeholder – Jotform first (placeholderText > phonePlaceholder > placeholder)
   const envPlaceholderText = getJotformEnvAndSetting('placeholderText')
@@ -111,9 +110,30 @@ function resolveConfig() {
     qpPlaceholder ||
     FALLBACK_PLACEHOLDER
 
+  // Sub label (Jotform: subLabel; then query param subLabel)
+  const envSubLabel = getJotformEnvAndSetting('subLabel')
+  const jtSubLabel = normalizePlaceholder(envSubLabel.raw)
+  const qpSubLabel = normalizePlaceholder(getQueryParam('subLabel'))
+  const subLabel = jtSubLabel || qpSubLabel || null
+
+  // Sub label position (top | left | right | bottom)
+  const envSubLabelPos = getJotformEnvAndSetting('subLabelPosition')
+  const jtSubLabelPosRaw = envSubLabelPos.raw
+  const qpSubLabelPosRaw = getQueryParam('subLabelPosition')
+  const normalizePos = (v) => {
+    if (!v || typeof v !== 'string') return null
+    const p = v.trim().toLowerCase()
+    return ['top', 'left', 'right', 'bottom'].includes(p) ? p : null
+  }
+  const jtSubLabelPosition = normalizePos(jtSubLabelPosRaw)
+  const qpSubLabelPosition = normalizePos(qpSubLabelPosRaw)
+  const subLabelPosition = jtSubLabelPosition || qpSubLabelPosition || 'bottom'
+
   return {
     country,
     placeholder,
+    subLabel,
+    subLabelPosition,
     debug: {
       jf: envDefaultCountry.hasJF || envPlaceholderText.hasJF,
       getSetting:
@@ -121,6 +141,8 @@ function resolveConfig() {
       rawDefaultCountry: envDefaultCountry.raw,
       rawPlaceholderText: envPlaceholderText.raw,
       rawPhonePlaceholder: envPhonePlaceholder.raw,
+      rawSubLabel: envSubLabel.raw,
+      rawSubLabelPosition: envSubLabelPos.raw,
       jotformDefaultCountry,
       queryDefaultCountry,
       jtPlaceholderText,
@@ -129,6 +151,9 @@ function resolveConfig() {
       qpPlaceholderText,
       qpPhonePlaceholder,
       qpPlaceholder,
+      resolvedPlaceholder: placeholder,
+      resolvedSubLabel: subLabel,
+      resolvedSubLabelPosition: subLabelPosition,
     },
   }
 }
@@ -164,15 +189,18 @@ export default function App() {
     {
       country: initialCountry,
       placeholder: initialPlaceholder,
-      debug: initialDebug,
+      subLabel: initialSubLabel,
+      subLabelPosition: initialSubLabelPosition,
     },
   ] = useState(() => resolveConfig())
   const [country, setCountry] = useState(initialCountry)
   const [countryMeta, setCountryMeta] = useState(null)
   const [placeholder, setPlaceholder] = useState(initialPlaceholder)
-  const [debug, setDebug] = useState({
-    ...initialDebug,
-    resolvedPlaceholder: initialPlaceholder,
+  const [subLabel, setSubLabel] = useState(initialSubLabel)
+  const [subLabelPosition, setSubLabelPosition] = useState(
+    initialSubLabelPosition,
+  )
+  const [, setDebug] = useState({
     isDropdownOpen: false,
     lastResizeHeight: null,
   })
@@ -251,14 +279,17 @@ export default function App() {
         const {
           country: nextCountry,
           placeholder: nextPlaceholder,
+          subLabel: nextSubLabel,
+          subLabelPosition: nextSubLabelPosition,
           debug: nextDebug,
         } = resolveConfig()
         setCountry(nextCountry)
         setPlaceholder(nextPlaceholder)
+        setSubLabel(nextSubLabel)
+        setSubLabelPosition(nextSubLabelPosition)
         setDebug((prev) => ({
           ...prev,
           ...nextDebug,
-          resolvedPlaceholder: nextPlaceholder,
         }))
 
         if (initialValue) setValue(initialValue)
@@ -304,8 +335,30 @@ export default function App() {
     return nationalDigits === 0
   })()
 
+  const [dialOffsetPx, setDialOffsetPx] = useState(0)
+  const dialMeasureRef = useRef(null)
+
+  // Measure dial code width in the actual DOM (Jotform or standalone),
+  // then use that to offset the placeholder so it always starts after the dial code.
+  useEffect(() => {
+    if (!countryMeta || !countryMeta.dialCode) {
+      setDialOffsetPx(0)
+      return
+    }
+    if (dialMeasureRef.current) {
+      const w = dialMeasureRef.current.offsetWidth || 0
+      setDialOffsetPx(w)
+    }
+  }, [countryMeta, placeholder])
+
+  const rootClassName = `phone-widget-root phone-widget-sublabel-${subLabelPosition}`
+
   return (
-    <div className="phone-widget-root">
+    <div className={rootClassName}>
+      {subLabel &&
+        (subLabelPosition === 'top' || subLabelPosition === 'left') && (
+          <div className="phone-widget-sublabel">{subLabel}</div>
+        )}
       <div className="phone-widget-inner" ref={containerRef}>
         <PhoneInput
           country={country}
@@ -326,17 +379,29 @@ export default function App() {
         />
         {showPlaceholderOverlay && (
           <div className="phone-widget-placeholder-overlay">
-            {/* Invisible dial code ghost to reserve width so that the
-                placeholder text starts visually after the dial code. */}
-            <span className="phone-widget-dial-ghost">
-              {countryMeta && countryMeta.dialCode
-                ? `+${countryMeta.dialCode} `
-                : ''}
+            <span
+              className="phone-widget-placeholder-text"
+              style={{ transform: `translateX(${48 + dialOffsetPx}px)` }}
+            >
+              {placeholder}
             </span>
-            <span className="phone-widget-placeholder-text">{placeholder}</span>
           </div>
         )}
+        {/* Invisible dial code measurement span to compute exact width
+            in the current rendering environment (Jotform or standalone). */}
+        <span
+          ref={dialMeasureRef}
+          className="phone-widget-dial-measure"
+        >
+          {countryMeta && countryMeta.dialCode
+            ? `+${countryMeta.dialCode} `
+            : ''}
+        </span>
       </div>
+      {subLabel &&
+        (subLabelPosition === 'bottom' || subLabelPosition === 'right') && (
+          <div className="phone-widget-sublabel">{subLabel}</div>
+        )}
     </div>
   )
 }

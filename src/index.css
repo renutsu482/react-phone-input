@@ -23,6 +23,18 @@ body {
   flex-shrink: 0;
 }
 
+.phone-widget-sublabel-top,
+.phone-widget-sublabel-bottom {
+  flex-direction: column;
+}
+
+.phone-widget-sublabel-left,
+.phone-widget-sublabel-right {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap; /* allow sublabel to wrap under input on narrow layouts */
+}
+
 /* Inner wrapper to keep the control at 330x40 while allowing
    the dropdown to render below without being clipped. */
 .phone-widget-inner {
@@ -75,16 +87,49 @@ body {
   pointer-events: none;
   color: #999;
   font-size: 14px;
-  padding-left: 48px; /* align with text inside input (after flag) */
 }
 
-/* Ghost dial code span: invisible but takes up width so that the
-   placeholder text starts visually after the dial code. */
-.phone-widget-dial-ghost {
+/* Measurement span for dial code width – same font as input, hidden visually */
+.phone-widget-dial-measure {
+  position: absolute;
+  top: 0;
+  left: 48px; /* after flag area */
   visibility: hidden;
   white-space: pre;
+  font-size: 14px;
 }
 
 .phone-widget-placeholder-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
   white-space: nowrap;
+}
+
+.phone-widget-sublabel {
+  font-size: 11px;
+  color: #888;
+  line-height: 1.3;
+  margin: 2px 4px;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.phone-widget-sublabel-top .phone-widget-sublabel {
+  margin-bottom: 2px;
+}
+
+.phone-widget-sublabel-bottom .phone-widget-sublabel {
+  margin-top: 2px;
+}
+
+.phone-widget-sublabel-left .phone-widget-sublabel {
+  margin-right: 6px;
+}
+
+.phone-widget-sublabel-right .phone-widget-sublabel {
+  margin-left: 6px;
 }
