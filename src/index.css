@@ -1,2 +1,59 @@
-* { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, sans-serif; padding: 1rem; }
+/* -------------------------------------------------------------------------
+   Base & reset
+   ------------------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+/* -------------------------------------------------------------------------
+   Phone widget: outer wrapper only. Exact size 330x40.
+   Do NOT set overflow here – the country dropdown must be able to open below.
+   ------------------------------------------------------------------------- */
+.phone-widget-root {
+  width: 330px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* -------------------------------------------------------------------------
+   Container: fixed size only. No overflow, no border/background overrides.
+   Let react-phone-input-2 control flag-dropdown and country-list.
+   ------------------------------------------------------------------------- */
+.phone-widget-root .react-tel-input.phone-widget-container {
+  width: 330px !important;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+}
+
+/* -------------------------------------------------------------------------
+   Input only: height and width to fit 330x40. Minimal overrides.
+   Left side is covered by the library’s flag-dropdown (48px); we only size
+   the input and align height. No changes to .flag-dropdown / .selected-flag.
+   ------------------------------------------------------------------------- */
+.phone-widget-root .react-tel-input .form-control.phone-widget-input {
+  height: 40px;
+  width: 282px; /* 330 - 48 for flag area */
+  padding-left: 48px;
+  line-height: 38px;
+  font-size: 14px;
+}
+
+/* Prevent input text from overflowing */
+.phone-widget-root .react-tel-input .form-control {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
