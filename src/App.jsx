@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useLayoutEffect } from 'react'
 import PhoneInput from 'react-phone-input-2'
 import 'react-phone-input-2/lib/style.css'
 
@@ -209,6 +209,11 @@ export default function App() {
   const valueRef = useRef(value)
   valueRef.current = value
   const containerRef = useRef(null)
+  const [measureDebug, setMeasureDebug] = useState({
+    dialWidth: 0,
+    offset: 48,
+    measured: false,
+  })
 
   const requestResize = useCallback((height) => {
     try {
@@ -340,14 +345,49 @@ export default function App() {
 
   // Measure dial code width in the actual DOM (Jotform or standalone),
   // then use that to offset the placeholder so it always starts after the dial code.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!countryMeta || !countryMeta.dialCode) {
       setDialOffsetPx(0)
+      setMeasureDebug((prev) => ({
+        ...prev,
+        dialWidth: 0,
+        offset: 48,
+        measured: false,
+      }))
       return
     }
-    if (dialMeasureRef.current) {
+
+    const measureOnce = () => {
+      if (!dialMeasureRef.current) return 0
       const w = dialMeasureRef.current.offsetWidth || 0
       setDialOffsetPx(w)
+      setMeasureDebug((prev) => ({
+        ...prev,
+        dialWidth: w,
+        offset: 48 + w,
+        measured: true,
+      }))
+      return w
+    }
+
+    // Initial synchronous measurement before paint
+    const firstWidth = measureOnce()
+
+    // Extra pass on next animation frame to catch late font/layout changes in Jotform iframe
+    let rafId = null
+    if (typeof window !== 'undefined') {
+      rafId = window.requestAnimationFrame(() => {
+        const w = measureOnce()
+        if (w !== firstWidth) {
+          // Already updated inside measureOnce
+        }
+      })
+    }
+
+    return () => {
+      if (rafId !== null && typeof window !== 'undefined') {
+        window.cancelAnimationFrame(rafId)
+      }
     }
   }, [countryMeta, placeholder])
 
