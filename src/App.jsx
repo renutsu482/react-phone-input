@@ -8,6 +8,57 @@ const FALLBACK_COUNTRY = 'us'
 const FALLBACK_PLACEHOLDER = 'Enter phone number'
 
 /**
+ * Produce a human-friendly international display format for email/Jotform.
+ * Prefers react-phone-input-2's formatted value, normalized to:
+ *  - always start with '+'
+ *  - always include the country dial code
+ *  - use spaces instead of punctuation for readability.
+ */
+function formatPhoneForEmail(rawValue, formattedValue, country) {
+  const dial = country && country.dialCode
+    ? country.dialCode.toString().replace(/\D/g, '')
+    : null
+
+  const normalize = (input) =>
+    input
+      .replace(/[()\u00A0-]/g, ' ') // parentheses, hyphens, non‑breaking spaces -> space
+      .replace(/\s+/g, ' ') // collapse multiple spaces
+      .trim()
+
+  let base = formattedValue || ''
+
+  if (base) {
+    base = normalize(base)
+    if (!base.startsWith('+')) {
+      if (dial) {
+        const rest = base.replace(/^[+0\s]+/, '')
+        base = `+${dial}${rest ? ' ' + rest : ''}`
+      } else {
+        const digits = (rawValue || '').replace(/\D/g, '')
+        base = digits ? `+${digits}` : ''
+      }
+    }
+    return base
+  }
+
+  const digits = (rawValue || '').replace(/\D/g, '')
+  if (!digits) return ''
+
+  let result = digits
+  if (dial && digits.startsWith(dial)) {
+    const national = digits.slice(dial.length)
+    const grouped = national.replace(/(\d{3,4})(?=\d)/g, '$1 ')
+    result = `+${dial}${grouped ? ' ' + grouped : ''}`
+  } else if (dial) {
+    result = `+${dial} ${digits}`
+  } else {
+    result = `+${digits}`
+  }
+
+  return result
+}
+
+/**
  * Normalize a raw country code string to a lowercase ISO2 code (tr, gb, us, de, ...).
  * Returns null if the value is empty or not a string.
  */
@@ -208,6 +259,9 @@ export default function App() {
   const [value, setValue] = useState('')
   const valueRef = useRef(value)
   valueRef.current = value
+  const [displayValue, setDisplayValue] = useState('')
+  const displayValueRef = useRef(displayValue)
+  displayValueRef.current = displayValue
   const containerRef = useRef(null)
   /* Only flag needed for placeholder alignment: show overlay after dial width is measured. */
   const [dialMeasured, setDialMeasured] = useState(false)
@@ -294,35 +348,51 @@ export default function App() {
           ...nextDebug,
         }))
 
-        if (initialValue) setValue(initialValue)
+        if (initialValue) {
+          setValue(initialValue)
+          setDisplayValue(initialValue)
+        }
       },
     )
 
     window.JFCustomWidget.subscribe('submit', function () {
       window.JFCustomWidget.sendSubmit({
         valid: true,
-        value: valueRef.current ?? '',
+        value: displayValueRef.current || valueRef.current || '',
       })
     })
   }, [])
 
-  const handleChange = useCallback((next, country, _e, _formattedValue) => {
-    const nextStr = next ?? ''
-    const maxDigits = getMaxDigitsForCountry(country)
-    const trimmed = trimToMaxDigits(nextStr, maxDigits)
-    const finalValue = trimmed !== nextStr ? trimmed : nextStr
-    setValue(finalValue)
-    if (country && typeof country === 'object') {
-      setCountryMeta(country)
-    }
-
-    try {
-      window.parent.postMessage({ type: MESSAGE_TYPE, value: finalValue }, '*')
-      if (typeof window.JFCustomWidget !== 'undefined') {
-        window.JFCustomWidget.sendData({ value: finalValue })
+  const handleChange = useCallback(
+    (next, country, _e, formattedValue) => {
+      const nextStr = next ?? ''
+      const maxDigits = getMaxDigitsForCountry(country)
+      const trimmed = trimToMaxDigits(nextStr, maxDigits)
+      const finalValue = trimmed !== nextStr ? trimmed : nextStr
+      setValue(finalValue)
+      if (country && typeof country === 'object') {
+        setCountryMeta(country)
       }
-    } catch (_) {}
-  }, [])
+
+      const emailDisplay = formatPhoneForEmail(finalValue, formattedValue, country)
+      setDisplayValue(emailDisplay)
+
+      try {
+        // Keep compact value for postMessage-based integrations
+        window.parent.postMessage(
+          { type: MESSAGE_TYPE, value: finalValue },
+          '*',
+        )
+        if (typeof window.JFCustomWidget !== 'undefined') {
+          window.JFCustomWidget.sendData({
+            value: emailDisplay || finalValue,
+            rawValue: finalValue,
+          })
+        }
+      } catch (_) {}
+    },
+    [],
+  )
 
   const showPlaceholderOverlay = (() => {
     if (!placeholder) return false
