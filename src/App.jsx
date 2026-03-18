@@ -349,6 +349,18 @@ function isGbCountry(country) {
   return getIso2(country) === 'gb' || getDialDigits(country) === '44'
 }
 
+function computeGbNormalizedVariantsFromControlledValue(controlledValue) {
+  const digits = (controlledValue || '').replace(/\D/g, '')
+  let national = digits.startsWith('44') ? digits.slice(2) : digits
+  if (national.startsWith('0')) national = national.slice(1)
+
+  const raw = `+44${national}`
+  const first4 = national.slice(0, 4)
+  const rest = national.slice(4)
+  const display = `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
+  return { display, raw }
+}
+
 function formatGbSubmittedDisplay(value, country) {
   if (getIso2(country) !== 'gb') return ''
 
@@ -577,34 +589,35 @@ export default function App() {
         valueRef.current || '',
         countryMetaRef.current || null,
       )
-      const submitPayload =
-        isGbCountry(countryMetaRef.current || null)
-          ? (() => {
-              const gb = buildGbSubmissionVariants(
-                valueRef.current || '',
-                countryMetaRef.current || null,
-              )
-              return {
-                valid: !!submitIsValid,
-                value: submitIsValid ? gb.display : '',
-                displayValue: gb.display,
-                formattedValue: gb.display,
-                text: gb.display,
-                rawValue: gb.raw,
-                e164Value: gb.raw,
-              }
-            })()
-          : {
-              valid: !!submitIsValid,
-              value: submitIsValid
-                ? displayValueRef.current || valueRef.current || ''
-                : '',
-              rawValue: valueRef.current || '',
-              displayValue: displayValueRef.current || '',
-              formattedValue: displayValueRef.current || '',
-              text: displayValueRef.current || '',
-              e164Value: submitE164,
-            }
+      const submitPayload = {
+        valid: !!submitIsValid,
+        value: submitIsValid
+          ? displayValueRef.current || valueRef.current || ''
+          : '',
+        rawValue: valueRef.current || '',
+        displayValue: displayValueRef.current || '',
+        formattedValue: displayValueRef.current || '',
+        text: displayValueRef.current || '',
+        e164Value: submitE164,
+      }
+
+      // HARD inline override for GB: normalize every field on the final object being sent.
+      if (isGbCountry(countryMetaRef.current || null)) {
+        const digits = (valueRef.current || '').replace(/\D/g, '')
+        let national = digits.startsWith('44') ? digits.slice(2) : digits
+        if (national.startsWith('0')) national = national.slice(1)
+        const raw = `+44${national}`
+        const first4 = national.slice(0, 4)
+        const rest = national.slice(4)
+        const display = `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
+
+        submitPayload.value = submitIsValid ? display : ''
+        submitPayload.displayValue = display
+        submitPayload.formattedValue = display
+        submitPayload.text = display
+        submitPayload.rawValue = raw
+        submitPayload.e164Value = raw
+      }
 
       if (shouldDebugJotformPayload()) {
         // Capture immediately before submit bridge call.
@@ -645,32 +658,36 @@ export default function App() {
         typeof window !== 'undefined' &&
         typeof window.JFCustomWidget !== 'undefined'
       ) {
-        const payload =
-          isGbCountry(countryObj)
-            ? (() => {
-                const gb = buildGbSubmissionVariants(finalValue, countryObj)
-                return {
-                  value: nextIsValid ? gb.display : '',
-                  displayValue: gb.display,
-                  formattedValue: gb.display,
-                  text: gb.display,
-                  rawValue: gb.raw,
-                  e164Value: gb.raw,
-                  valid: nextIsValid,
-                }
-              })()
-            : {
-                value: nextIsValid ? (emailDisplay || finalValue) : '',
-                rawValue: finalValue,
-                displayValue: emailDisplay,
-                formattedValue: inputText,
-                text: emailDisplay,
-                e164Value: nextE164,
-                valid: nextIsValid,
-              }
+        const payload = {
+          value: nextIsValid ? (emailDisplay || finalValue) : '',
+          rawValue: finalValue,
+          displayValue: emailDisplay,
+          formattedValue: inputText,
+          text: emailDisplay,
+          e164Value: nextE164,
+          valid: nextIsValid,
+        }
+
+        // HARD inline override for GB: normalize every field on the final object being sent.
+        if (isGbCountry(countryObj)) {
+          const digits = (finalValue || '').replace(/\D/g, '')
+          let national = digits.startsWith('44') ? digits.slice(2) : digits
+          if (national.startsWith('0')) national = national.slice(1)
+          const raw = `+44${national}`
+          const first4 = national.slice(0, 4)
+          const rest = national.slice(4)
+          const display = `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
+
+          payload.value = nextIsValid ? display : ''
+          payload.displayValue = display
+          payload.formattedValue = display
+          payload.text = display
+          payload.rawValue = raw
+          payload.e164Value = raw
+        }
 
         if (shouldDebugJotformPayload()) {
-          // Capture immediately before data bridge call.
+          // Capture the exact final object being sent (after override).
           setGbPayloadDebug((prev) => ({ ...prev, sendData: payload }))
         }
 
