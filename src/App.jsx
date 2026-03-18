@@ -310,6 +310,12 @@ function isCompleteByCountryFormat(value, country) {
   return nationalDigits.length >= expectedNational
 }
 
+function isValidByMinNationalDigits(value, country, minDigits = 9) {
+  const national = getNationalDigitsFromControlledValue(value || '', country || null)
+  const count = (national || '').replace(/\D/g, '').length
+  return count >= minDigits
+}
+
 function normalizeE164ForOutput(value, country) {
   const v = value || ''
   const digits = v.replace(/\D/g, '')
@@ -512,9 +518,10 @@ export default function App() {
 
     window.JFCustomWidget.subscribe('submit', function () {
       // Recompute against latest controlled value to avoid any stale edge case.
-      const submitIsValid = isCompleteByCountryFormat(
+      const submitIsValid = isValidByMinNationalDigits(
         valueRef.current || '',
         countryMetaRef.current || null,
+        9,
       )
       isValidRef.current = submitIsValid
       const iso2 = getIso2(countryMetaRef.current || null)
@@ -551,7 +558,7 @@ export default function App() {
     e164ValueRef.current = nextE164
     setE164Value(nextE164)
 
-    const nextIsValid = isCompleteByCountryFormat(finalValue, countryObj)
+    const nextIsValid = isValidByMinNationalDigits(finalValue, countryObj, 9)
     setIsValid(nextIsValid)
     isValidRef.current = nextIsValid
 
