@@ -345,6 +345,20 @@ function getIso2(country) {
   return v ? String(v).toLowerCase() : ''
 }
 
+function formatGbSubmittedDisplay(value, country) {
+  if (getIso2(country) !== 'gb') return ''
+
+  let national = getNationalDigitsFromControlledValue(value || '', country || null)
+    .replace(/\D/g, '')
+  if (!national) return '+44'
+
+  if (national.startsWith('0')) national = national.slice(1)
+
+  const first4 = national.slice(0, 4)
+  const rest = national.slice(4)
+  return `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
+}
+
 function getNationalDigitsFromControlledValue(controlledValue, country) {
   const digits = (controlledValue || '').replace(/\D/g, '')
   if (!digits) return ''
@@ -533,7 +547,10 @@ export default function App() {
         valid: !!submitIsValid,
         value: submitIsValid
           ? (iso2 === 'gb'
-              ? submitE164
+              ? formatGbSubmittedDisplay(
+                  valueRef.current || '',
+                  countryMetaRef.current || null,
+                )
               : displayValueRef.current || valueRef.current || '')
           : '',
       })
@@ -572,7 +589,9 @@ export default function App() {
       ) {
         const iso2 = getIso2(countryObj)
         const submittedValue =
-          iso2 === 'gb' ? nextE164 : emailDisplay || finalValue
+          iso2 === 'gb'
+            ? formatGbSubmittedDisplay(finalValue, countryObj)
+            : emailDisplay || finalValue
         window.JFCustomWidget.sendData({
           value: nextIsValid ? submittedValue : '',
           rawValue: finalValue,
