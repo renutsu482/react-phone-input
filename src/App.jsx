@@ -345,22 +345,6 @@ function getIso2(country) {
   return v ? String(v).toLowerCase() : ''
 }
 
-function isGbCountry(country) {
-  return getIso2(country) === 'gb' || getDialDigits(country) === '44'
-}
-
-function computeGbNormalizedVariantsFromControlledValue(controlledValue) {
-  const digits = (controlledValue || '').replace(/\D/g, '')
-  let national = digits.startsWith('44') ? digits.slice(2) : digits
-  if (national.startsWith('0')) national = national.slice(1)
-
-  const raw = `+44${national}`
-  const first4 = national.slice(0, 4)
-  const rest = national.slice(4)
-  const display = `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
-  return { display, raw }
-}
-
 function formatGbSubmittedDisplay(value, country) {
   if (getIso2(country) !== 'gb') return ''
 
@@ -585,10 +569,6 @@ export default function App() {
         9,
       )
       isValidRef.current = submitIsValid
-      const submitE164 = normalizeE164ForOutput(
-        valueRef.current || '',
-        countryMetaRef.current || null,
-      )
       const submitPayload = {
         valid: !!submitIsValid,
         value: submitIsValid
@@ -598,13 +578,16 @@ export default function App() {
         displayValue: displayValueRef.current || '',
         formattedValue: displayValueRef.current || '',
         text: displayValueRef.current || '',
-        e164Value: submitE164,
+        e164Value: normalizeE164ForOutput(
+          valueRef.current || '',
+          countryMetaRef.current || null,
+        ),
       }
 
-      // HARD inline override for GB: normalize every field on the final object being sent.
-      if (isGbCountry(countryMetaRef.current || null)) {
-        const digits = (valueRef.current || '').replace(/\D/g, '')
-        let national = digits.startsWith('44') ? digits.slice(2) : digits
+      // HARD inline override for UK-style +44 numbers based only on the current value digits.
+      const submitDigits = (valueRef.current || '').replace(/\D/g, '')
+      if (submitDigits.startsWith('44')) {
+        let national = submitDigits.slice(2)
         if (national.startsWith('0')) national = national.slice(1)
         const raw = `+44${national}`
         const first4 = national.slice(0, 4)
@@ -668,10 +651,10 @@ export default function App() {
           valid: nextIsValid,
         }
 
-        // HARD inline override for GB: normalize every field on the final object being sent.
-        if (isGbCountry(countryObj)) {
-          const digits = (finalValue || '').replace(/\D/g, '')
-          let national = digits.startsWith('44') ? digits.slice(2) : digits
+        // HARD inline override for UK-style +44 numbers based only on the current value digits.
+        const digits = (finalValue || '').replace(/\D/g, '')
+        if (digits.startsWith('44')) {
+          let national = digits.slice(2)
           if (national.startsWith('0')) national = national.slice(1)
           const raw = `+44${national}`
           const first4 = national.slice(0, 4)
