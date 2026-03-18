@@ -588,13 +588,15 @@ export default function App() {
         typeof window.JFCustomWidget !== 'undefined'
       ) {
         const iso2 = getIso2(countryObj)
+        const gbSubmittedDisplay =
+          iso2 === 'gb' ? formatGbSubmittedDisplay(finalValue, countryObj) : ''
         const submittedValue =
-          iso2 === 'gb'
-            ? formatGbSubmittedDisplay(finalValue, countryObj)
-            : emailDisplay || finalValue
+          iso2 === 'gb' ? gbSubmittedDisplay : emailDisplay || finalValue
         window.JFCustomWidget.sendData({
           value: nextIsValid ? submittedValue : '',
-          rawValue: finalValue,
+          // Some Jotform email templates/fields may use alternative properties;
+          // keep them aligned for GB so trunk-0 never appears in recipient emails.
+          rawValue: iso2 === 'gb' ? gbSubmittedDisplay : finalValue,
           e164Value: nextE164,
           valid: nextIsValid,
         })
