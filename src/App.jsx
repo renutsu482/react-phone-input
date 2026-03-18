@@ -339,6 +339,38 @@ function getIso2(country) {
   return v ? String(v).toLowerCase() : ''
 }
 
+function getNationalDigitsFromControlledValue(controlledValue, country) {
+  const digits = (controlledValue || '').replace(/\D/g, '')
+  if (!digits) return ''
+
+  const iso2 = getIso2(country)
+
+  // GB: derive national digits purely by stripping one leading "44" when present.
+  // This avoids relying on library metadata that may be missing/inconsistent during typing.
+  if (iso2 === 'gb') {
+    return digits.startsWith('44') ? digits.slice(2) : digits
+  }
+
+  const dialDigits = getDialDigits(country)
+  if (dialDigits && digits.startsWith(dialDigits)) return digits.slice(dialDigits.length)
+  return digits
+}
+
+function formatGbNationalForDisplay(nationalDigits) {
+  const n = (nationalDigits || '').replace(/\D/g, '')
+  if (!n) return ''
+  const splitAt = n.startsWith('0') ? 5 : 4
+  if (n.length <= splitAt) return n
+  return `${n.slice(0, splitAt)} ${n.slice(splitAt)}`
+}
+
+function clampGbNationalDigits(rawNationalDigits) {
+  const digits = (rawNationalDigits || '').replace(/\D/g, '')
+  if (!digits) return ''
+  const maxLen = digits.startsWith('0') ? 11 : 10
+  return digits.slice(0, maxLen)
+}
+
 export default function App() {
   // defaultCountry & placeholder: internal config only, never rendered as their own inputs
   const [
@@ -378,6 +410,8 @@ export default function App() {
   const containerRef = useRef(null)
   /* Only flag needed for placeholder alignment: show overlay after dial width is measured. */
   const [dialMeasured, setDialMeasured] = useState(false)
+  const [gbNationalDigits, setGbNationalDigits] = useState('')
+  const [gbNationalDisplay, setGbNationalDisplay] = useState('')
 
   const requestResize = useCallback((height) => {
     try {
@@ -499,17 +533,7 @@ export default function App() {
     })
   }, [])
 
-  const handleChange = useCallback((next, countryArg, e, formattedValue) => {
-    const nextStr = typeof next === 'string' ? next : next ? String(next) : ''
-    const countryObj =
-      countryArg && typeof countryArg === 'object' ? countryArg : null
-
-    const maxDigits = getMaxDigitsForValue(nextStr, countryObj)
-    // 1) Apply existing max-length trimming (keeps current behavior)
-    const trimmed = trimToMaxDigits(nextStr, maxDigits)
-    // 2) Final controlled value: keep library formatting intact (do not fight GB typing)
-    const finalValue = trimmed !== nextStr ? trimmed : nextStr
-
+  const commitFinalValue = useCallback((finalValue, countryObj, inputText) => {
     // Write refs immediately so submit/data can't observe stale state.
     valueRef.current = finalValue
 
@@ -519,12 +543,6 @@ export default function App() {
       countryMetaRef.current = countryObj
     }
 
-    // Prefer the real input text when available (more robust across environments)
-    const inputText =
-      (e && e.target && typeof e.target.value === 'string' && e.target.value) ||
-      (typeof formattedValue === 'string' ? formattedValue : '') ||
-      ''
-
     const emailDisplay = formatPhoneForEmail(finalValue, inputText, countryObj)
     displayValueRef.current = emailDisplay
     setDisplayValue(emailDisplay)
@@ -533,14 +551,11 @@ export default function App() {
     e164ValueRef.current = nextE164
     setE164Value(nextE164)
 
-    // Validation: treat incomplete numbers as invalid based on the country's expected national length.
-    // This blocks submit (JFCustomWidget.sendSubmit valid:false).
     const nextIsValid = isCompleteByCountryFormat(finalValue, countryObj)
     setIsValid(nextIsValid)
     isValidRef.current = nextIsValid
 
     try {
-      // Keep compact value for postMessage-based integrations
       if (typeof window !== 'undefined' && window.parent) {
         window.parent.postMessage({ type: MESSAGE_TYPE, value: finalValue }, '*')
       }
@@ -552,8 +567,6 @@ export default function App() {
         const submittedValue =
           iso2 === 'gb' ? nextE164 : emailDisplay || finalValue
         window.JFCustomWidget.sendData({
-          // IMPORTANT: never send empty when the visible value is complete/valid.
-          // For invalid/incomplete, send empty so Jotform required validation behaves correctly.
           value: nextIsValid ? submittedValue : '',
           rawValue: finalValue,
           e164Value: nextE164,
@@ -561,6 +574,52 @@ export default function App() {
         })
       }
     } catch (_) {}
+  }, [])
+
+  const handleChange = useCallback((next, countryArg, e, formattedValue) => {
+    const countryObj =
+      countryArg && typeof countryArg === 'object' ? countryArg : null
+    const iso2 = getIso2(countryObj)
+
+    // Prefer the real input text when available (more robust across environments)
+    const inputText =
+      (e && e.target && typeof e.target.value === 'string' && e.target.value) ||
+      (typeof formattedValue === 'string' ? formattedValue : '') ||
+      ''
+
+    // For GB leading-0 local input, the library can drop the 11th national digit.
+    // Preserve it by reconstructing from the most complete available input text.
+    const nextStrRaw = typeof next === 'string' ? next : next ? String(next) : ''
+    let nextStrForTrim = nextStrRaw
+    if (iso2 === 'gb') {
+      const dial = getDialDigits(countryObj) || '44'
+      const digitsFromText = (inputText || '').replace(/\D/g, '')
+      if (digitsFromText.startsWith(dial)) {
+        const national = digitsFromText.slice(dial.length)
+        if (national.startsWith('0')) {
+          // Allow up to 11 visible national digits when leading 0 is present.
+          nextStrForTrim = `+${dial}${national.slice(0, 11)}`
+        }
+      }
+    }
+
+    const maxDigits = getMaxDigitsForValue(nextStrForTrim, countryObj)
+    // 1) Apply existing max-length trimming (keeps current behavior)
+    const trimmed = trimToMaxDigits(nextStrForTrim, maxDigits)
+    // 2) Final controlled value: keep library formatting intact (do not fight GB typing)
+    const finalValue =
+      trimmed !== nextStrForTrim ? trimmed : nextStrForTrim
+
+    // Write refs immediately so submit/data can't observe stale state.
+    valueRef.current = finalValue
+
+    setValue(finalValue)
+    if (countryObj) {
+      setCountryMeta(countryObj)
+      countryMetaRef.current = countryObj
+    }
+
+    commitFinalValue(finalValue, countryObj, inputText)
   }, [])
 
   const showPlaceholderOverlay = (() => {
@@ -618,9 +677,36 @@ export default function App() {
   }, [countryMeta, placeholder])
 
   const rootClassName = `phone-widget-root phone-widget-sublabel-${subLabelPosition}`
-  // Allow GB local-style 11-digit input (e.g. 07911 224456) in the visible UI.
-  // We still validate/normalize with the GB trunk-0 rule.
-  const inputMasks = { gb: '..... ......' }
+  const isGbActive = (() => {
+    if (country === 'gb') return true
+    return getIso2(countryMetaRef.current || null) === 'gb'
+  })()
+
+  // Keep GB custom input state in sync when switching into GB or when value updates externally.
+  useEffect(() => {
+    if (!isGbActive) return
+    const digits = (valueRef.current || value || '').replace(/\D/g, '')
+    const national = digits.startsWith('44') ? digits.slice(2) : digits
+    const clamped = clampGbNationalDigits(national)
+    setGbNationalDigits(clamped)
+    setGbNationalDisplay(formatGbNationalForDisplay(clamped))
+  }, [isGbActive, value])
+
+  const handleGbNationalInputChange = useCallback(
+    (e) => {
+      const raw = e && e.target ? e.target.value : ''
+      const digitsOnly = (raw || '').replace(/\D/g, '')
+      const clamped = clampGbNationalDigits(digitsOnly)
+      setGbNationalDigits(clamped)
+      setGbNationalDisplay(formatGbNationalForDisplay(clamped))
+
+      const gbMeta = countryMetaRef.current || { dialCode: '44', countryCode: 'gb' }
+      const finalValue = `+44${clamped}`
+      const displayText = `+44 ${formatGbNationalForDisplay(clamped)}`.trim()
+      commitFinalValue(finalValue, gbMeta, displayText)
+    },
+    [commitFinalValue],
+  )
 
   return (
     <div className={rootClassName}>
@@ -636,17 +722,36 @@ export default function App() {
           onMount={(_valueOnMount, dataOnMount) => {
             if (dataOnMount && typeof dataOnMount === 'object') {
               setCountryMeta(dataOnMount)
+              countryMetaRef.current = dataOnMount
             }
           }}
           placeholder={placeholder}
-          masks={inputMasks}
-          containerClass="phone-widget-container"
+          inputProps={isGbActive ? { readOnly: true } : undefined}
+          containerClass={
+            isGbActive
+              ? 'phone-widget-container phone-widget-container--gb'
+              : 'phone-widget-container'
+          }
           inputClass="phone-widget-input"
           buttonClass="phone-widget-button"
           dropdownClass="phone-widget-dropdown"
           enableSearch={false}
           countryCodeEditable={false}
         />
+        {isGbActive && (
+          <div className="phone-widget-gb-custom">
+            <span className="phone-widget-gb-prefix">+44</span>
+            <input
+              className="phone-widget-gb-input"
+              value={gbNationalDisplay}
+              onChange={handleGbNationalInputChange}
+              placeholder={placeholder}
+              inputMode="numeric"
+              autoComplete="tel-national"
+              aria-label="UK phone number"
+            />
+          </div>
+        )}
         {showPlaceholderOverlay &&
           (!(countryMeta && countryMeta.dialCode) || dialMeasured) && (
           <div className="phone-widget-placeholder-overlay">

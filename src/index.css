@@ -120,6 +120,45 @@ body {
   white-space: nowrap;
 }
 
+/* GB-only: use a custom visible input layer (country selector stays from library) */
+.phone-widget-root .react-tel-input.phone-widget-container--gb .form-control {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+  caret-color: transparent !important;
+}
+
+.phone-widget-gb-custom {
+  position: absolute;
+  top: 0;
+  left: 48px; /* after flag area */
+  right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+  z-index: 12;
+}
+
+.phone-widget-gb-prefix {
+  font-size: 14px;
+  color: #111;
+  white-space: nowrap;
+}
+
+.phone-widget-gb-input {
+  width: 100%;
+  height: 40px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 38px;
+  color: #111;
+  padding: 0;
+}
+
 /* Hidden span to measure dial code width in current font/layout (iframe-safe). */
 .phone-widget-dial-measure {
   position: absolute;
