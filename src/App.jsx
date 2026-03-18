@@ -380,12 +380,6 @@ function buildGbSubmissionVariants(value, country) {
   return { display, raw }
 }
 
-function shouldDebugJotformPayload() {
-  // Temporary: always enable GB payload debug panel when GB is active.
-  // (Jotform iframe may strip query params, so URL-based flags are unreliable.)
-  return true
-}
-
 function getNationalDigitsFromControlledValue(controlledValue, country) {
   const digits = (controlledValue || '').replace(/\D/g, '')
   if (!digits) return ''
@@ -459,10 +453,6 @@ export default function App() {
   const [dialMeasured, setDialMeasured] = useState(false)
   const [gbNationalDigits, setGbNationalDigits] = useState('')
   const [gbNationalDisplay, setGbNationalDisplay] = useState('')
-  const [gbPayloadDebug, setGbPayloadDebug] = useState({
-    sendData: null,
-    sendSubmit: null,
-  })
 
   const requestResize = useCallback((height) => {
     try {
@@ -602,11 +592,6 @@ export default function App() {
         submitPayload.e164Value = raw
       }
 
-      if (shouldDebugJotformPayload()) {
-        // Capture immediately before submit bridge call.
-        setGbPayloadDebug((prev) => ({ ...prev, sendSubmit: submitPayload }))
-      }
-
       window.JFCustomWidget.sendSubmit(submitPayload)
     })
   }, [])
@@ -667,11 +652,6 @@ export default function App() {
           payload.text = display
           payload.rawValue = raw
           payload.e164Value = raw
-        }
-
-        if (shouldDebugJotformPayload()) {
-          // Capture the exact final object being sent (after override).
-          setGbPayloadDebug((prev) => ({ ...prev, sendData: payload }))
         }
 
         window.JFCustomWidget.sendData(payload)
@@ -853,25 +833,6 @@ export default function App() {
               autoComplete="tel-national"
               aria-label="UK phone number"
             />
-          </div>
-        )}
-        {isGbActive && shouldDebugJotformPayload() && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: 8,
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              fontSize: 11,
-              background: '#fff',
-              color: '#111',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              maxHeight: 220,
-              overflow: 'auto',
-            }}
-          >
-            {`GB Jotform payload debug (debugGbPayload=1)\n\nsendData:\n${JSON.stringify(gbPayloadDebug.sendData, null, 2)}\n\nsendSubmit:\n${JSON.stringify(gbPayloadDebug.sendSubmit, null, 2)}\n`}
           </div>
         )}
         {!isGbActive &&
