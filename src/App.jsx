@@ -602,6 +602,9 @@ export default function App() {
   }, [countryMeta, placeholder])
 
   const rootClassName = `phone-widget-root phone-widget-sublabel-${subLabelPosition}`
+  // Allow GB local-style 11-digit input (e.g. 07911 224456) in the visible UI.
+  // We still validate/normalize with the GB trunk-0 rule.
+  const inputMasks = { gb: '..... ......' }
 
   return (
     <div className={rootClassName}>
@@ -620,6 +623,7 @@ export default function App() {
             }
           }}
           placeholder={placeholder}
+          masks={inputMasks}
           containerClass="phone-widget-container"
           inputClass="phone-widget-input"
           buttonClass="phone-widget-button"
