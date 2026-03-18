@@ -333,6 +333,12 @@ function normalizeE164ForOutput(value, country) {
   return `+${dialDigits}${national}`
 }
 
+function getIso2(country) {
+  if (!country || typeof country !== 'object') return ''
+  const v = country.countryCode || country.iso2
+  return v ? String(v).toLowerCase() : ''
+}
+
 export default function App() {
   // defaultCountry & placeholder: internal config only, never rendered as their own inputs
   const [
@@ -477,10 +483,17 @@ export default function App() {
         countryMetaRef.current || null,
       )
       isValidRef.current = submitIsValid
+      const iso2 = getIso2(countryMetaRef.current || null)
+      const submitE164 = normalizeE164ForOutput(
+        valueRef.current || '',
+        countryMetaRef.current || null,
+      )
       window.JFCustomWidget.sendSubmit({
         valid: !!submitIsValid,
         value: submitIsValid
-          ? displayValueRef.current || valueRef.current || ''
+          ? (iso2 === 'gb'
+              ? submitE164
+              : displayValueRef.current || valueRef.current || '')
           : '',
       })
     })
@@ -535,10 +548,13 @@ export default function App() {
         typeof window !== 'undefined' &&
         typeof window.JFCustomWidget !== 'undefined'
       ) {
+        const iso2 = getIso2(countryObj)
+        const submittedValue =
+          iso2 === 'gb' ? nextE164 : emailDisplay || finalValue
         window.JFCustomWidget.sendData({
           // IMPORTANT: never send empty when the visible value is complete/valid.
           // For invalid/incomplete, send empty so Jotform required validation behaves correctly.
-          value: nextIsValid ? (emailDisplay || finalValue) : '',
+          value: nextIsValid ? submittedValue : '',
           rawValue: finalValue,
           e164Value: nextE164,
           valid: nextIsValid,
