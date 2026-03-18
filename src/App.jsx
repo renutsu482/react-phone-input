@@ -245,6 +245,29 @@ function getExpectedNationalDigits(country) {
   return (format.match(/[#.]/g) || []).length
 }
 
+function getMaxDigitsForValue(value, country) {
+  const baseMax = getMaxDigitsForCountry(country)
+  if (!country || typeof country !== 'object') return baseMax
+
+  const iso2 = (country.countryCode || country.iso2)
+    ? String(country.countryCode || country.iso2).toLowerCase()
+    : ''
+  if (iso2 !== 'gb') return baseMax
+
+  // GB UX: allow one extra national digit if the national part starts with trunk '0'.
+  // This supports local-style input like 07911 224456 (11 visible national digits),
+  // while validation still treats one leading '0' as trunk prefix (10 effective digits).
+  const dialDigits = getDialDigits(country)
+  const digits = (value || '').replace(/\D/g, '')
+  if (!dialDigits || !digits.startsWith(dialDigits)) return baseMax
+
+  const national = digits.slice(dialDigits.length)
+  if (national.startsWith('0')) {
+    return Math.min(dialDigits.length + 11, 15)
+  }
+  return Math.min(dialDigits.length + 10, 15)
+}
+
 function getRequiredNationalDigits(country) {
   if (!country || typeof country !== 'object') return 0
   const iso2 = (country.countryCode || country.iso2)
@@ -468,7 +491,7 @@ export default function App() {
     const countryObj =
       countryArg && typeof countryArg === 'object' ? countryArg : null
 
-    const maxDigits = getMaxDigitsForCountry(countryObj)
+    const maxDigits = getMaxDigitsForValue(nextStr, countryObj)
     // 1) Apply existing max-length trimming (keeps current behavior)
     const trimmed = trimToMaxDigits(nextStr, maxDigits)
     // 2) Final controlled value: keep library formatting intact (do not fight GB typing)
