@@ -578,7 +578,8 @@ export default function App() {
         e164Value: submitE164,
       }
 
-      if (iso2 === 'gb' && shouldDebugJotformPayload()) {
+      if (shouldDebugJotformPayload()) {
+        // Capture immediately before submit bridge call.
         setGbPayloadDebug((prev) => ({ ...prev, sendSubmit: submitPayload }))
       }
 
@@ -633,7 +634,8 @@ export default function App() {
           valid: nextIsValid,
         }
 
-        if (iso2 === 'gb' && shouldDebugJotformPayload()) {
+        if (shouldDebugJotformPayload()) {
+          // Capture immediately before data bridge call.
           setGbPayloadDebug((prev) => ({ ...prev, sendData: payload }))
         }
 
