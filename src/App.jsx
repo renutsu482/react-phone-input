@@ -360,13 +360,9 @@ function formatGbSubmittedDisplay(value, country) {
 }
 
 function shouldDebugJotformPayload() {
-  try {
-    if (typeof window === 'undefined') return false
-    const q = String(window.location?.search || '')
-    return q.includes('debugGbPayload=1')
-  } catch {
-    return false
-  }
+  // Temporary: always enable GB payload debug panel when GB is active.
+  // (Jotform iframe may strip query params, so URL-based flags are unreliable.)
+  return true
 }
 
 function getNationalDigitsFromControlledValue(controlledValue, country) {
