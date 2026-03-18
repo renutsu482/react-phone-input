@@ -345,6 +345,10 @@ function getIso2(country) {
   return v ? String(v).toLowerCase() : ''
 }
 
+function isGbCountry(country) {
+  return getIso2(country) === 'gb' || getDialDigits(country) === '44'
+}
+
 function formatGbSubmittedDisplay(value, country) {
   if (getIso2(country) !== 'gb') return ''
 
@@ -569,13 +573,12 @@ export default function App() {
         9,
       )
       isValidRef.current = submitIsValid
-      const iso2 = getIso2(countryMetaRef.current || null)
       const submitE164 = normalizeE164ForOutput(
         valueRef.current || '',
         countryMetaRef.current || null,
       )
       const submitPayload =
-        iso2 === 'gb'
+        isGbCountry(countryMetaRef.current || null)
           ? (() => {
               const gb = buildGbSubmissionVariants(
                 valueRef.current || '',
@@ -642,9 +645,8 @@ export default function App() {
         typeof window !== 'undefined' &&
         typeof window.JFCustomWidget !== 'undefined'
       ) {
-        const iso2 = getIso2(countryObj)
         const payload =
-          iso2 === 'gb'
+          isGbCountry(countryObj)
             ? (() => {
                 const gb = buildGbSubmissionVariants(finalValue, countryObj)
                 return {
