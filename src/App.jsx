@@ -245,10 +245,26 @@ function getExpectedNationalDigits(country) {
   return (format.match(/[#.]/g) || []).length
 }
 
+function getRequiredNationalDigits(country) {
+  if (!country || typeof country !== 'object') return 0
+  const iso2 = (country.countryCode || country.iso2)
+    ? String(country.countryCode || country.iso2).toLowerCase()
+    : ''
+
+  // Key countries for this widget: strict national digit requirements.
+  if (iso2 === 'us') return 10
+  if (iso2 === 'ca') return 10
+  if (iso2 === 'gb') return 10
+  if (iso2 === 'tr') return 10
+
+  return 0
+}
+
 function isCompleteByCountryFormat(value, country) {
   const digits = (value || '').replace(/\D/g, '')
   const dialDigits = getDialDigits(country)
-  const expectedNational = getExpectedNationalDigits(country)
+  const requiredNational = getRequiredNationalDigits(country)
+  const expectedNational = requiredNational || getExpectedNationalDigits(country)
 
   // If we don't have format metadata, don't block submission (avoid false negatives).
   if (!expectedNational) return true
@@ -257,7 +273,28 @@ function isCompleteByCountryFormat(value, country) {
     ? digits.slice(dialDigits.length)
     : digits
 
+  // For key countries, enforce exact national length; otherwise allow >= by format.
+  if (requiredNational) return nationalDigits.length === requiredNational
   return nationalDigits.length >= expectedNational
+}
+
+function stripLeadingNationalZeroForGB(value, country) {
+  if (!country || typeof country !== 'object') return value || ''
+  const iso2 = (country.countryCode || country.iso2)
+    ? String(country.countryCode || country.iso2).toLowerCase()
+    : ''
+  if (iso2 !== 'gb') return value || ''
+
+  const dialDigits = getDialDigits(country)
+  if (!dialDigits) return value || ''
+
+  const digits = (value || '').replace(/\D/g, '')
+  if (!digits.startsWith(dialDigits)) return value || ''
+
+  const national = digits.slice(dialDigits.length)
+  if (!national.startsWith('0')) return value || ''
+
+  return `+${dialDigits}${national.slice(1)}`
 }
 
 export default function App() {
@@ -272,6 +309,8 @@ export default function App() {
   ] = useState(() => resolveConfig())
   const [country, setCountry] = useState(initialCountry)
   const [countryMeta, setCountryMeta] = useState(null)
+  const countryMetaRef = useRef(countryMeta)
+  countryMetaRef.current = countryMeta
   const [placeholder, setPlaceholder] = useState(initialPlaceholder)
   const [subLabel, setSubLabel] = useState(initialSubLabel)
   const [subLabelPosition, setSubLabelPosition] = useState(
@@ -393,9 +432,17 @@ export default function App() {
     )
 
     window.JFCustomWidget.subscribe('submit', function () {
+      // Recompute against latest controlled value to avoid any stale edge case.
+      const submitIsValid = isCompleteByCountryFormat(
+        valueRef.current || '',
+        countryMetaRef.current || null,
+      )
+      isValidRef.current = submitIsValid
       window.JFCustomWidget.sendSubmit({
-        valid: !!isValidRef.current,
-        value: displayValueRef.current || valueRef.current || '',
+        valid: !!submitIsValid,
+        value: submitIsValid
+          ? displayValueRef.current || valueRef.current || ''
+          : '',
       })
     })
   }, [])
@@ -406,27 +453,20 @@ export default function App() {
       countryArg && typeof countryArg === 'object' ? countryArg : null
 
     const maxDigits = getMaxDigitsForCountry(countryObj)
+    // 1) Apply existing max-length trimming (keeps current behavior)
     const trimmed = trimToMaxDigits(nextStr, maxDigits)
+    // 2) Compute final controlled value (including GB leading-zero rule)
     let finalValue = trimmed !== nextStr ? trimmed : nextStr
+    finalValue = stripLeadingNationalZeroForGB(finalValue, countryObj)
 
-    // GB rule: prevent a leading 0 as the first national digit (trunk prefix).
-    // We enforce by immediately stripping the first national '0' from the controlled value.
-    const iso2 = (countryObj && (countryObj.countryCode || countryObj.iso2))
-      ? String(countryObj.countryCode || countryObj.iso2).toLowerCase()
-      : ''
-    if (iso2 === 'gb') {
-      const dialDigits = getDialDigits(countryObj)
-      const digits = (finalValue || '').replace(/\D/g, '')
-      if (dialDigits && digits.startsWith(dialDigits)) {
-        const national = digits.slice(dialDigits.length)
-        if (national.startsWith('0')) {
-          finalValue = `+${dialDigits}${national.slice(1)}`
-        }
-      }
-    }
+    // Write refs immediately so submit/data can't observe stale state.
+    valueRef.current = finalValue
 
     setValue(finalValue)
-    if (countryObj) setCountryMeta(countryObj)
+    if (countryObj) {
+      setCountryMeta(countryObj)
+      countryMetaRef.current = countryObj
+    }
 
     // Prefer the real input text when available (more robust across environments)
     const inputText =
@@ -435,6 +475,7 @@ export default function App() {
       ''
 
     const emailDisplay = formatPhoneForEmail(finalValue, inputText, countryObj)
+    displayValueRef.current = emailDisplay
     setDisplayValue(emailDisplay)
 
     // Validation: treat incomplete numbers as invalid based on the country's expected national length.
@@ -453,7 +494,9 @@ export default function App() {
         typeof window.JFCustomWidget !== 'undefined'
       ) {
         window.JFCustomWidget.sendData({
-          value: emailDisplay || finalValue,
+          // IMPORTANT: never send empty when the visible value is complete/valid.
+          // For invalid/incomplete, send empty so Jotform required validation behaves correctly.
+          value: nextIsValid ? (emailDisplay || finalValue) : '',
           rawValue: finalValue,
           valid: nextIsValid,
         })
