@@ -359,6 +359,16 @@ function formatGbSubmittedDisplay(value, country) {
   return `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
 }
 
+function shouldDebugJotformPayload() {
+  try {
+    if (typeof window === 'undefined') return false
+    const q = String(window.location?.search || '')
+    return q.includes('debugGbPayload=1')
+  } catch {
+    return false
+  }
+}
+
 function getNationalDigitsFromControlledValue(controlledValue, country) {
   const digits = (controlledValue || '').replace(/\D/g, '')
   if (!digits) return ''
@@ -432,6 +442,10 @@ export default function App() {
   const [dialMeasured, setDialMeasured] = useState(false)
   const [gbNationalDigits, setGbNationalDigits] = useState('')
   const [gbNationalDisplay, setGbNationalDisplay] = useState('')
+  const [gbPayloadDebug, setGbPayloadDebug] = useState({
+    sendData: null,
+    sendSubmit: null,
+  })
 
   const requestResize = useCallback((height) => {
     try {
@@ -543,17 +557,36 @@ export default function App() {
         valueRef.current || '',
         countryMetaRef.current || null,
       )
-      window.JFCustomWidget.sendSubmit({
+      const gbSubmittedDisplay =
+        iso2 === 'gb'
+          ? formatGbSubmittedDisplay(
+              valueRef.current || '',
+              countryMetaRef.current || null,
+            )
+          : ''
+
+      const submitValue = submitIsValid
+        ? (iso2 === 'gb'
+            ? gbSubmittedDisplay
+            : displayValueRef.current || valueRef.current || '')
+        : ''
+
+      const submitPayload = {
         valid: !!submitIsValid,
-        value: submitIsValid
-          ? (iso2 === 'gb'
-              ? formatGbSubmittedDisplay(
-                  valueRef.current || '',
-                  countryMetaRef.current || null,
-                )
-              : displayValueRef.current || valueRef.current || '')
-          : '',
-      })
+        value: submitValue,
+        // Provide aligned alternates for GB in case Jotform email uses a different property.
+        rawValue: iso2 === 'gb' ? gbSubmittedDisplay : valueRef.current || '',
+        displayValue: iso2 === 'gb' ? gbSubmittedDisplay : displayValueRef.current || '',
+        formattedValue: iso2 === 'gb' ? gbSubmittedDisplay : displayValueRef.current || '',
+        text: iso2 === 'gb' ? gbSubmittedDisplay : displayValueRef.current || '',
+        e164Value: submitE164,
+      }
+
+      if (iso2 === 'gb' && shouldDebugJotformPayload()) {
+        setGbPayloadDebug((prev) => ({ ...prev, sendSubmit: submitPayload }))
+      }
+
+      window.JFCustomWidget.sendSubmit(submitPayload)
     })
   }, [])
 
@@ -592,14 +625,23 @@ export default function App() {
           iso2 === 'gb' ? formatGbSubmittedDisplay(finalValue, countryObj) : ''
         const submittedValue =
           iso2 === 'gb' ? gbSubmittedDisplay : emailDisplay || finalValue
-        window.JFCustomWidget.sendData({
+
+        const payload = {
           value: nextIsValid ? submittedValue : '',
-          // Some Jotform email templates/fields may use alternative properties;
-          // keep them aligned for GB so trunk-0 never appears in recipient emails.
           rawValue: iso2 === 'gb' ? gbSubmittedDisplay : finalValue,
+          // Align any text-like fields for GB so no trunk-0 variant can be picked up.
+          displayValue: iso2 === 'gb' ? gbSubmittedDisplay : emailDisplay,
+          formattedValue: iso2 === 'gb' ? gbSubmittedDisplay : inputText,
+          text: iso2 === 'gb' ? gbSubmittedDisplay : emailDisplay,
           e164Value: nextE164,
           valid: nextIsValid,
-        })
+        }
+
+        if (iso2 === 'gb' && shouldDebugJotformPayload()) {
+          setGbPayloadDebug((prev) => ({ ...prev, sendData: payload }))
+        }
+
+        window.JFCustomWidget.sendData(payload)
       }
     } catch (_) {}
   }, [])
@@ -778,6 +820,25 @@ export default function App() {
               autoComplete="tel-national"
               aria-label="UK phone number"
             />
+          </div>
+        )}
+        {isGbActive && shouldDebugJotformPayload() && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: 8,
+              border: '1px solid #ddd',
+              borderRadius: 6,
+              fontSize: 11,
+              background: '#fff',
+              color: '#111',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxHeight: 220,
+              overflow: 'auto',
+            }}
+          >
+            {`GB Jotform payload debug (debugGbPayload=1)\n\nsendData:\n${JSON.stringify(gbPayloadDebug.sendData, null, 2)}\n\nsendSubmit:\n${JSON.stringify(gbPayloadDebug.sendSubmit, null, 2)}\n`}
           </div>
         )}
         {!isGbActive &&
