@@ -359,6 +359,27 @@ function formatGbSubmittedDisplay(value, country) {
   return `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
 }
 
+function buildGbSubmissionVariants(value, country) {
+  // Returns { display: "+44 7400 123456", raw: "+447400123456" }
+  // Source of truth is the controlled value digits; we then strip one trunk 0.
+  const digits = (value || '').replace(/\D/g, '')
+  let national = ''
+
+  // Prefer removing one leading 44 if present; otherwise treat digits as national.
+  if (digits.startsWith('44')) national = digits.slice(2)
+  else national = digits
+
+  // Remove exactly one trunk 0 for GB submission/email fields.
+  if (national.startsWith('0')) national = national.slice(1)
+
+  const raw = `+44${national}`
+  const first4 = national.slice(0, 4)
+  const rest = national.slice(4)
+  const display = `+44 ${first4}${rest ? ' ' + rest : ''}`.trim()
+
+  return { display, raw }
+}
+
 function shouldDebugJotformPayload() {
   // Temporary: always enable GB payload debug panel when GB is active.
   // (Jotform iframe may strip query params, so URL-based flags are unreliable.)
@@ -553,30 +574,34 @@ export default function App() {
         valueRef.current || '',
         countryMetaRef.current || null,
       )
-      const gbSubmittedDisplay =
+      const submitPayload =
         iso2 === 'gb'
-          ? formatGbSubmittedDisplay(
-              valueRef.current || '',
-              countryMetaRef.current || null,
-            )
-          : ''
-
-      const submitValue = submitIsValid
-        ? (iso2 === 'gb'
-            ? gbSubmittedDisplay
-            : displayValueRef.current || valueRef.current || '')
-        : ''
-
-      const submitPayload = {
-        valid: !!submitIsValid,
-        value: submitValue,
-        // Provide aligned alternates for GB in case Jotform email uses a different property.
-        rawValue: iso2 === 'gb' ? gbSubmittedDisplay : valueRef.current || '',
-        displayValue: iso2 === 'gb' ? gbSubmittedDisplay : displayValueRef.current || '',
-        formattedValue: iso2 === 'gb' ? gbSubmittedDisplay : displayValueRef.current || '',
-        text: iso2 === 'gb' ? gbSubmittedDisplay : displayValueRef.current || '',
-        e164Value: submitE164,
-      }
+          ? (() => {
+              const gb = buildGbSubmissionVariants(
+                valueRef.current || '',
+                countryMetaRef.current || null,
+              )
+              return {
+                valid: !!submitIsValid,
+                value: submitIsValid ? gb.display : '',
+                displayValue: gb.display,
+                formattedValue: gb.display,
+                text: gb.display,
+                rawValue: gb.raw,
+                e164Value: gb.raw,
+              }
+            })()
+          : {
+              valid: !!submitIsValid,
+              value: submitIsValid
+                ? displayValueRef.current || valueRef.current || ''
+                : '',
+              rawValue: valueRef.current || '',
+              displayValue: displayValueRef.current || '',
+              formattedValue: displayValueRef.current || '',
+              text: displayValueRef.current || '',
+              e164Value: submitE164,
+            }
 
       if (shouldDebugJotformPayload()) {
         // Capture immediately before submit bridge call.
@@ -618,21 +643,29 @@ export default function App() {
         typeof window.JFCustomWidget !== 'undefined'
       ) {
         const iso2 = getIso2(countryObj)
-        const gbSubmittedDisplay =
-          iso2 === 'gb' ? formatGbSubmittedDisplay(finalValue, countryObj) : ''
-        const submittedValue =
-          iso2 === 'gb' ? gbSubmittedDisplay : emailDisplay || finalValue
-
-        const payload = {
-          value: nextIsValid ? submittedValue : '',
-          rawValue: iso2 === 'gb' ? gbSubmittedDisplay : finalValue,
-          // Align any text-like fields for GB so no trunk-0 variant can be picked up.
-          displayValue: iso2 === 'gb' ? gbSubmittedDisplay : emailDisplay,
-          formattedValue: iso2 === 'gb' ? gbSubmittedDisplay : inputText,
-          text: iso2 === 'gb' ? gbSubmittedDisplay : emailDisplay,
-          e164Value: nextE164,
-          valid: nextIsValid,
-        }
+        const payload =
+          iso2 === 'gb'
+            ? (() => {
+                const gb = buildGbSubmissionVariants(finalValue, countryObj)
+                return {
+                  value: nextIsValid ? gb.display : '',
+                  displayValue: gb.display,
+                  formattedValue: gb.display,
+                  text: gb.display,
+                  rawValue: gb.raw,
+                  e164Value: gb.raw,
+                  valid: nextIsValid,
+                }
+              })()
+            : {
+                value: nextIsValid ? (emailDisplay || finalValue) : '',
+                rawValue: finalValue,
+                displayValue: emailDisplay,
+                formattedValue: inputText,
+                text: emailDisplay,
+                e164Value: nextE164,
+                valid: nextIsValid,
+              }
 
         if (shouldDebugJotformPayload()) {
           // Capture immediately before data bridge call.
