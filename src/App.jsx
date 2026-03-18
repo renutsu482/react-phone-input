@@ -269,32 +269,45 @@ function isCompleteByCountryFormat(value, country) {
   // If we don't have format metadata, don't block submission (avoid false negatives).
   if (!expectedNational) return true
 
-  const nationalDigits = dialDigits && digits.startsWith(dialDigits)
+  let nationalDigits = dialDigits && digits.startsWith(dialDigits)
     ? digits.slice(dialDigits.length)
     : digits
+
+  // GB UX rule: allow local-style leading 0 while typing, but treat it as trunk prefix
+  // for validation (ignore a single leading 0 for the national digit count).
+  const iso2 = (country && (country.countryCode || country.iso2))
+    ? String(country.countryCode || country.iso2).toLowerCase()
+    : ''
+  if (iso2 === 'gb' && nationalDigits.startsWith('0')) {
+    nationalDigits = nationalDigits.slice(1)
+  }
 
   // For key countries, enforce exact national length; otherwise allow >= by format.
   if (requiredNational) return nationalDigits.length === requiredNational
   return nationalDigits.length >= expectedNational
 }
 
-function stripLeadingNationalZeroForGB(value, country) {
-  if (!country || typeof country !== 'object') return value || ''
-  const iso2 = (country.countryCode || country.iso2)
-    ? String(country.countryCode || country.iso2).toLowerCase()
-    : ''
-  if (iso2 !== 'gb') return value || ''
+function normalizeE164ForOutput(value, country) {
+  const v = value || ''
+  const digits = v.replace(/\D/g, '')
+  if (!digits) return ''
 
   const dialDigits = getDialDigits(country)
-  if (!dialDigits) return value || ''
+  const iso2 = (country && (country.countryCode || country.iso2))
+    ? String(country.countryCode || country.iso2).toLowerCase()
+    : ''
 
-  const digits = (value || '').replace(/\D/g, '')
-  if (!digits.startsWith(dialDigits)) return value || ''
+  // Default: keep library value (already +<dial><national> digits)
+  if (!dialDigits || !digits.startsWith(dialDigits)) return digits ? `+${digits}` : ''
 
-  const national = digits.slice(dialDigits.length)
-  if (!national.startsWith('0')) return value || ''
+  let national = digits.slice(dialDigits.length)
 
-  return `+${dialDigits}${national.slice(1)}`
+  // GB: drop a single leading trunk '0' when producing E.164 output.
+  if (iso2 === 'gb' && national.startsWith('0')) {
+    national = national.slice(1)
+  }
+
+  return `+${dialDigits}${national}`
 }
 
 export default function App() {
@@ -330,6 +343,9 @@ export default function App() {
   const [isValid, setIsValid] = useState(true)
   const isValidRef = useRef(isValid)
   isValidRef.current = isValid
+  const [e164Value, setE164Value] = useState('')
+  const e164ValueRef = useRef(e164Value)
+  e164ValueRef.current = e164Value
   const containerRef = useRef(null)
   /* Only flag needed for placeholder alignment: show overlay after dial width is measured. */
   const [dialMeasured, setDialMeasured] = useState(false)
@@ -455,9 +471,8 @@ export default function App() {
     const maxDigits = getMaxDigitsForCountry(countryObj)
     // 1) Apply existing max-length trimming (keeps current behavior)
     const trimmed = trimToMaxDigits(nextStr, maxDigits)
-    // 2) Compute final controlled value (including GB leading-zero rule)
-    let finalValue = trimmed !== nextStr ? trimmed : nextStr
-    finalValue = stripLeadingNationalZeroForGB(finalValue, countryObj)
+    // 2) Final controlled value: keep library formatting intact (do not fight GB typing)
+    const finalValue = trimmed !== nextStr ? trimmed : nextStr
 
     // Write refs immediately so submit/data can't observe stale state.
     valueRef.current = finalValue
@@ -477,6 +492,10 @@ export default function App() {
     const emailDisplay = formatPhoneForEmail(finalValue, inputText, countryObj)
     displayValueRef.current = emailDisplay
     setDisplayValue(emailDisplay)
+
+    const nextE164 = normalizeE164ForOutput(finalValue, countryObj)
+    e164ValueRef.current = nextE164
+    setE164Value(nextE164)
 
     // Validation: treat incomplete numbers as invalid based on the country's expected national length.
     // This blocks submit (JFCustomWidget.sendSubmit valid:false).
@@ -498,6 +517,7 @@ export default function App() {
           // For invalid/incomplete, send empty so Jotform required validation behaves correctly.
           value: nextIsValid ? (emailDisplay || finalValue) : '',
           rawValue: finalValue,
+          e164Value: nextE164,
           valid: nextIsValid,
         })
       }
