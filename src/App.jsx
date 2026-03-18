@@ -234,6 +234,32 @@ function trimToMaxDigits(value, maxDigits) {
   return trimmed ? `+${trimmed}` : ''
 }
 
+function getDialDigits(country) {
+  const dial = country && typeof country === 'object' ? country.dialCode : null
+  return (dial || '').toString().replace(/\D/g, '')
+}
+
+function getExpectedNationalDigits(country) {
+  if (!country || typeof country !== 'object') return 0
+  const format = (country.format || '').toString()
+  return (format.match(/[#.]/g) || []).length
+}
+
+function isCompleteByCountryFormat(value, country) {
+  const digits = (value || '').replace(/\D/g, '')
+  const dialDigits = getDialDigits(country)
+  const expectedNational = getExpectedNationalDigits(country)
+
+  // If we don't have format metadata, don't block submission (avoid false negatives).
+  if (!expectedNational) return true
+
+  const nationalDigits = dialDigits && digits.startsWith(dialDigits)
+    ? digits.slice(dialDigits.length)
+    : digits
+
+  return nationalDigits.length >= expectedNational
+}
+
 export default function App() {
   // defaultCountry & placeholder: internal config only, never rendered as their own inputs
   const [
@@ -262,6 +288,9 @@ export default function App() {
   const [displayValue, setDisplayValue] = useState('')
   const displayValueRef = useRef(displayValue)
   displayValueRef.current = displayValue
+  const [isValid, setIsValid] = useState(true)
+  const isValidRef = useRef(isValid)
+  isValidRef.current = isValid
   const containerRef = useRef(null)
   /* Only flag needed for placeholder alignment: show overlay after dial width is measured. */
   const [dialMeasured, setDialMeasured] = useState(false)
@@ -280,6 +309,14 @@ export default function App() {
       // ignore resize errors
     }
   }, [])
+
+  // If the resolved default country ever changes (late settings / HMR),
+  // keep internal state in sync without affecting current behavior.
+  useEffect(() => {
+    if (initialCountry && typeof initialCountry === 'string') {
+      setCountry((prev) => (prev === initialCountry ? prev : initialCountry))
+    }
+  }, [initialCountry])
 
   // Observe dropdown open/close by watching for .country-list / .flag-dropdown.open changes
   useEffect(() => {
@@ -357,42 +394,72 @@ export default function App() {
 
     window.JFCustomWidget.subscribe('submit', function () {
       window.JFCustomWidget.sendSubmit({
-        valid: true,
+        valid: !!isValidRef.current,
         value: displayValueRef.current || valueRef.current || '',
       })
     })
   }, [])
 
-  const handleChange = useCallback(
-    (next, country, _e, formattedValue) => {
-      const nextStr = next ?? ''
-      const maxDigits = getMaxDigitsForCountry(country)
-      const trimmed = trimToMaxDigits(nextStr, maxDigits)
-      const finalValue = trimmed !== nextStr ? trimmed : nextStr
-      setValue(finalValue)
-      if (country && typeof country === 'object') {
-        setCountryMeta(country)
-      }
+  const handleChange = useCallback((next, countryArg, e, formattedValue) => {
+    const nextStr = typeof next === 'string' ? next : next ? String(next) : ''
+    const countryObj =
+      countryArg && typeof countryArg === 'object' ? countryArg : null
 
-      const emailDisplay = formatPhoneForEmail(finalValue, formattedValue, country)
-      setDisplayValue(emailDisplay)
+    const maxDigits = getMaxDigitsForCountry(countryObj)
+    const trimmed = trimToMaxDigits(nextStr, maxDigits)
+    let finalValue = trimmed !== nextStr ? trimmed : nextStr
 
-      try {
-        // Keep compact value for postMessage-based integrations
-        window.parent.postMessage(
-          { type: MESSAGE_TYPE, value: finalValue },
-          '*',
-        )
-        if (typeof window.JFCustomWidget !== 'undefined') {
-          window.JFCustomWidget.sendData({
-            value: emailDisplay || finalValue,
-            rawValue: finalValue,
-          })
+    // GB rule: prevent a leading 0 as the first national digit (trunk prefix).
+    // We enforce by immediately stripping the first national '0' from the controlled value.
+    const iso2 = (countryObj && (countryObj.countryCode || countryObj.iso2))
+      ? String(countryObj.countryCode || countryObj.iso2).toLowerCase()
+      : ''
+    if (iso2 === 'gb') {
+      const dialDigits = getDialDigits(countryObj)
+      const digits = (finalValue || '').replace(/\D/g, '')
+      if (dialDigits && digits.startsWith(dialDigits)) {
+        const national = digits.slice(dialDigits.length)
+        if (national.startsWith('0')) {
+          finalValue = `+${dialDigits}${national.slice(1)}`
         }
-      } catch (_) {}
-    },
-    [],
-  )
+      }
+    }
+
+    setValue(finalValue)
+    if (countryObj) setCountryMeta(countryObj)
+
+    // Prefer the real input text when available (more robust across environments)
+    const inputText =
+      (e && e.target && typeof e.target.value === 'string' && e.target.value) ||
+      (typeof formattedValue === 'string' ? formattedValue : '') ||
+      ''
+
+    const emailDisplay = formatPhoneForEmail(finalValue, inputText, countryObj)
+    setDisplayValue(emailDisplay)
+
+    // Validation: treat incomplete numbers as invalid based on the country's expected national length.
+    // This blocks submit (JFCustomWidget.sendSubmit valid:false).
+    const nextIsValid = isCompleteByCountryFormat(finalValue, countryObj)
+    setIsValid(nextIsValid)
+    isValidRef.current = nextIsValid
+
+    try {
+      // Keep compact value for postMessage-based integrations
+      if (typeof window !== 'undefined' && window.parent) {
+        window.parent.postMessage({ type: MESSAGE_TYPE, value: finalValue }, '*')
+      }
+      if (
+        typeof window !== 'undefined' &&
+        typeof window.JFCustomWidget !== 'undefined'
+      ) {
+        window.JFCustomWidget.sendData({
+          value: emailDisplay || finalValue,
+          rawValue: finalValue,
+          valid: nextIsValid,
+        })
+      }
+    } catch (_) {}
+  }, [])
 
   const showPlaceholderOverlay = (() => {
     if (!placeholder) return false
