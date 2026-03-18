@@ -752,7 +752,8 @@ export default function App() {
             />
           </div>
         )}
-        {showPlaceholderOverlay &&
+        {!isGbActive &&
+          showPlaceholderOverlay &&
           (!(countryMeta && countryMeta.dialCode) || dialMeasured) && (
           <div className="phone-widget-placeholder-overlay">
             <span
